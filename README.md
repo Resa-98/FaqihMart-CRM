@@ -16,6 +16,8 @@ Dibangun dengan **CodeIgniter 3.1.13**, **PHP 8.2+**, **MySQL/MariaDB**, dan
 - Peringatan nomor WhatsApp duplikat.
 - Tombol Buka Google Maps dan Salin Alamat pada detail pelanggan.
 - Ikon Maps di kolom daftar + simpan/ubah tautan Maps tanpa reload (realtime).
+- Daftar Pengiriman: susun tujuan per tanggal & sesi (pagi/sore), atur urutan, publikasikan
+  tautan akses untuk driver (tanpa akun), dan pantau progres.
 - Ekspor CSV.
 - Ganti password admin.
 
@@ -100,6 +102,47 @@ dan dibuka pada tab baru dengan `rel="noopener noreferrer"`. Tidak ada API berba
 Tombol **Ekspor CSV** pada daftar pelanggan mengikuti pencarian dan filter yang aktif.
 Berkas memakai BOM UTF-8 agar terbaca benar di Excel.
 
+## Daftar Pengiriman (Admin & Driver)
+
+Modul ini membantu admin menyusun daftar tujuan pengiriman harian dan membagikannya ke
+driver tanpa akun login.
+
+### Alur admin
+
+1. Buka menu **Pengiriman** → **+ Buat Daftar**.
+2. Isi tanggal pengiriman, pilih sesi **Pagi**/**Sore**, beri judul bila perlu, lalu simpan
+   (daftar tersimpan sebagai **draft**).
+3. Pada halaman kelola, cari pelanggan (nama/WhatsApp/alamat) di panel **Tambah Tujuan** dan
+   tekan **+ Tambah**. Alamat dan status lokasi tampil sebelum ditambahkan. Pelanggan yang
+   sama tidak bisa ditambahkan dua kali ke daftar yang sama (peringatan), tetapi boleh ikut
+   daftar/sesi lain.
+4. Atur urutan tujuan dengan tombol **&uarr; / &darr;**, isi **catatan pengiriman** khusus per
+   tujuan, atau hapus tujuan bila perlu.
+5. Tekan **Publikasikan**. Sistem membuat **tautan akses driver** yang bisa **disalin** atau
+   **dibagikan via WhatsApp**.
+6. Pantau progres (**x dari y tujuan selesai**) dan tekan **Tandai Selesai** bila pengiriman
+   rampung, atau **Batalkan** bila batal.
+
+### Tautan driver
+
+- Tautan berisi token acak panjang yang tidak mudah ditebak dan hanya berlaku untuk satu daftar.
+- **Buat ulang tautan** menerbitkan token baru (tautan lama langsung mati). **Cabut akses**
+  mematikan tautan tanpa membuat yang baru.
+- Token tidak pernah dicatat di log. Di database disimpan **hash**-nya (untuk pencarian) dan
+  salinan **terenkripsi** (agar admin dapat menyalin ulang tautan).
+
+### Halaman driver (mobile-first, tanpa login)
+
+Driver membuka tautan dari HP dan melihat tanggal, sesi, status daftar, nomor urut, nama,
+alamat lengkap (perumahan, blok/nomor, RT/RW, patokan), catatan, tombol **Buka Google Maps**
+dan **Salin Alamat**, serta tombol ubah status tujuan (**Belum / Diproses / Selesai**).
+Driver hanya dapat memperbarui status tujuan pada daftar yang dibagikan — bukan mengubah data
+pelanggan atau daftar lain.
+
+- Lokasi yang belum terverifikasi atau tanpa tautan Maps ditandai peringatan; aplikasi tidak
+  membuat koordinat/tautan palsu.
+- Daftar draft/dibatalkan atau tautan yang dicabut menampilkan pesan "tautan tidak berlaku".
+
 ## Backup dan Restore Database
 
 Backup:
@@ -120,12 +163,14 @@ Catatan: `.htaccess` memblokir akses langsung ke file `.sql` dan `.md`.
 ```
 application/
   config/        konfigurasi CI (config, database, routes, autoload)
-  controllers/   Auth, Dashboard, Customers, Welcome
+  controllers/   Auth, Dashboard, Customers, Deliveries, Driver, Welcome
   core/          MY_Controller (gerbang autentikasi)
   helpers/       maps_helper.php (validasi Maps, label status, alamat)
-  models/        Admin_model, Customer_model
-  views/         layouts, auth, dashboard, customers
+                 delivery_helper.php (label sesi/status pengiriman)
+  models/        Admin_model, Customer_model, Delivery_model
+  views/         layouts, auth, dashboard, customers, deliveries, driver
   cache/sessions sesi file-based
+assets/          aset publik (primary-logo.webp, icon-logo.webp) — di luar application/
 system/          framework CodeIgniter (jangan diubah)
 database.sql     skema + admin awal
 TASKS.md         task tracker

@@ -1,0 +1,422 @@
+<?php
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+/**
+ * Admin: Daftar Pengiriman.
+ *
+ * Admin menyusun daftar tujuan pengiriman per tanggal & sesi, memilih
+ * pelanggan dari CRM, mengatur urutan, lalu mempublikasikan tautan akses
+ * untuk driver.
+ */
+class Deliveries extends MY_Controller
+{
+	/** Status daftar yang masih boleh diubah tujuannya. */
+	private $editable_statuses = array('draft', 'published');
+
+	public function __construct()
+	{
+		parent::__construct();
+		$this->load->model('delivery_model');
+		$this->load->model('customer_model');
+		$this->load->helper(array('delivery', 'maps'));
+	}
+
+	// ---------------------------------------------------------------------
+	// Dashboard & daftar
+	// ---------------------------------------------------------------------
+
+	public function index()
+	{
+		$date    = $this->_get_date();
+		$filters = array(
+			'date'    => $date,
+			'session' => $this->_session_filter(),
+			'status'  => $this->_status_filter(),
+		);
+
+		$data = array(
+			'page_title' => 'Daftar Pengiriman',
+			'stats'      => $this->delivery_model->dashboard_stats($date),
+			'filters'    => $filters,
+			'lists'      => $this->delivery_model->get_lists($filters),
+			'today'      => date('Y-m-d'),
+		);
+
+		$this->render('deliveries/index', $data);
+	}
+
+	public function create()
+	{
+		$data = array(
+			'page_title' => 'Buat Daftar Pengiriman',
+			'list'       => NULL,
+			'form_action' => site_url('deliveries/store'),
+		);
+		$this->render('deliveries/form', $data);
+	}
+
+	public function store()
+	{
+		$this->_require_post();
+		$this->_set_rules();
+
+		if ($this->form_validation->run() === FALSE)
+		{
+			$this->render('deliveries/form', array(
+				'page_title'  => 'Buat Daftar Pengiriman',
+				'list'        => NULL,
+				'form_action' => site_url('deliveries/store'),
+			));
+			return;
+		}
+
+		$id = $this->delivery_model->create_list(array(
+			'delivery_date' => $this->input->post('delivery_date'),
+			'session'       => $this->input->post('session'),
+			'title'         => $this->_nullable('title'),
+			'status'        => 'draft',
+			'created_by'    => (int) $this->admin['id'],
+		));
+
+		if ($id === FALSE)
+		{
+			$this->session->set_flashdata('error', 'Gagal membuat daftar pengiriman.');
+			redirect('deliveries/create');
+		}
+
+		$this->session->set_flashdata('success', 'Daftar pengiriman dibuat. Tambahkan tujuan di bawah.');
+		redirect('deliveries/'.$id);
+	}
+
+	public function show($id)
+	{
+		$list = $this->_list_or_404($id);
+		$items = $this->delivery_model->get_items($list['id']);
+
+		$q         = trim((string) $this->input->get('q', TRUE));
+		$customers = array();
+		if ($q !== '')
+		{
+			$customers = $this->customer_model->get_all(
+				array('q' => $q, 'status' => '', 'view' => 'active'),
+				25,
+				0
+			);
+		}
+
+		$raw_token = $this->delivery_model->reveal_token($list);
+
+		$data = array(
+			'page_title'  => 'Daftar Pengiriman',
+			'list'        => $list,
+			'items'       => $items,
+			'progress'    => $this->delivery_model->progress($list['id']),
+			'editable'    => $this->_is_editable($list),
+			'q'           => $q,
+			'customers'   => $customers,
+			'driver_url'  => ($raw_token !== NULL) ? site_url('d/'.$raw_token) : NULL,
+		);
+
+		$this->render('deliveries/show', $data);
+	}
+
+	public function update($id)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		if ( ! $this->_is_editable($list))
+		{
+			$this->session->set_flashdata('error', 'Daftar yang sudah selesai/dibatalkan tidak dapat diubah.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		$this->_set_rules();
+		if ($this->form_validation->run() === FALSE)
+		{
+			$this->render('deliveries/form', array(
+				'page_title'  => 'Edit Daftar Pengiriman',
+				'list'        => $list,
+				'form_action' => site_url('deliveries/update/'.$list['id']),
+			));
+			return;
+		}
+
+		$this->delivery_model->update_list($list['id'], array(
+			'delivery_date' => $this->input->post('delivery_date'),
+			'session'       => $this->input->post('session'),
+			'title'         => $this->_nullable('title'),
+		));
+
+		$this->session->set_flashdata('success', 'Daftar pengiriman diperbarui.');
+		redirect('deliveries/'.$list['id']);
+	}
+
+	public function edit($id)
+	{
+		$list = $this->_list_or_404($id);
+
+		if ( ! $this->_is_editable($list))
+		{
+			$this->session->set_flashdata('error', 'Daftar yang sudah selesai/dibatalkan tidak dapat diubah.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		$this->render('deliveries/form', array(
+			'page_title'  => 'Edit Daftar Pengiriman',
+			'list'        => $list,
+			'form_action' => site_url('deliveries/update/'.$list['id']),
+		));
+	}
+
+	// ---------------------------------------------------------------------
+	// Tujuan
+	// ---------------------------------------------------------------------
+
+	public function addItem($id)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		if ( ! $this->_is_editable($list))
+		{
+			$this->session->set_flashdata('error', 'Daftar ini tidak dapat diubah lagi.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		$customer_id = (int) $this->input->post('customer_id');
+		$customer    = $this->customer_model->get($customer_id);
+		if ( ! $customer)
+		{
+			$this->session->set_flashdata('error', 'Pelanggan tidak ditemukan.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		if ($this->delivery_model->item_exists($list['id'], $customer_id))
+		{
+			$this->session->set_flashdata('error', $customer['full_name'].' sudah ada di daftar ini. Pelanggan yang sama masih boleh ditambahkan ke daftar/sesi lain.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		$this->delivery_model->add_item($list['id'], $customer_id, $this->input->post('note'));
+		$this->session->set_flashdata('success', $customer['full_name'].' ditambahkan ke daftar.');
+		redirect('deliveries/'.$list['id'].'#tujuan');
+	}
+
+	public function removeItem($id, $item_id)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		if ( ! $this->_is_editable($list))
+		{
+			$this->session->set_flashdata('error', 'Daftar ini tidak dapat diubah lagi.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		$item = $this->delivery_model->get_item($list['id'], $item_id);
+		if ( ! $item)
+		{
+			show_404();
+		}
+
+		$this->delivery_model->remove_item($list['id'], $item_id);
+		$this->session->set_flashdata('success', 'Tujuan dihapus dari daftar.');
+		redirect('deliveries/'.$list['id'].'#tujuan');
+	}
+
+	public function updateItemNote($id, $item_id)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		if ( ! $this->_is_editable($list))
+		{
+			$this->session->set_flashdata('error', 'Daftar ini tidak dapat diubah lagi.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		if ( ! $this->delivery_model->get_item($list['id'], $item_id))
+		{
+			show_404();
+		}
+
+		$this->delivery_model->update_item_note($list['id'], $item_id, $this->input->post('note'));
+		$this->session->set_flashdata('success', 'Catatan tujuan disimpan.');
+		redirect('deliveries/'.$list['id'].'#tujuan');
+	}
+
+	public function moveItem($id, $item_id, $direction)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		if ( ! $this->_is_editable($list))
+		{
+			$this->session->set_flashdata('error', 'Daftar ini tidak dapat diubah lagi.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		if ( ! in_array($direction, array('up', 'down'), TRUE))
+		{
+			show_404();
+		}
+
+		$this->delivery_model->move_item($list['id'], $item_id, $direction);
+		redirect('deliveries/'.$list['id'].'#tujuan');
+	}
+
+	// ---------------------------------------------------------------------
+	// Status & tautan driver
+	// ---------------------------------------------------------------------
+
+	public function setStatus($id)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		$status = (string) $this->input->post('status');
+		if ( ! in_array($status, array('draft', 'published', 'completed', 'cancelled'), TRUE))
+		{
+			show_404();
+		}
+
+		$update = array('status' => $status);
+
+		if ($status === 'published')
+		{
+			$update['published_at'] = date('Y-m-d H:i:s');
+			$this->delivery_model->update_list($list['id'], $update);
+
+			// Sediakan tautan driver bila belum ada token aktif.
+			if (empty($list['token_hash']) || ! empty($list['token_revoked_at']))
+			{
+				$this->delivery_model->generate_token($list['id']);
+			}
+		}
+		else
+		{
+			$this->delivery_model->update_list($list['id'], $update);
+		}
+
+		$this->session->set_flashdata('success', 'Status daftar: '.delivery_status_label($status).'.');
+		redirect('deliveries/'.$list['id']);
+	}
+
+	public function regenerate($id)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		$this->delivery_model->generate_token($list['id']);
+
+		// Tautan hanya berguna bila daftar dipublikasikan.
+		if ( ! in_array($list['status'], array('published', 'completed'), TRUE))
+		{
+			$this->delivery_model->update_list($list['id'], array(
+				'status'       => 'published',
+				'published_at' => date('Y-m-d H:i:s'),
+			));
+		}
+
+		$this->session->set_flashdata('success', 'Tautan driver baru dibuat. Tautan lama tidak berlaku lagi.');
+		redirect('deliveries/'.$list['id']);
+	}
+
+	public function revoke($id)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		$this->delivery_model->revoke_token($list['id']);
+		$this->session->set_flashdata('success', 'Akses tautan driver dicabut.');
+		redirect('deliveries/'.$list['id']);
+	}
+
+	// ---------------------------------------------------------------------
+
+	private function _set_rules()
+	{
+		$this->form_validation->set_rules('delivery_date', 'Tanggal pengiriman', 'trim|required|callback__valid_date');
+		$this->form_validation->set_rules('session', 'Sesi', 'trim|required|in_list[pagi,sore]');
+		$this->form_validation->set_rules('title', 'Judul', 'trim|max_length[150]');
+	}
+
+	public function _valid_date($value)
+	{
+		$value = trim((string) $value);
+		if ($value === '')
+		{
+			return TRUE;
+		}
+
+		$date = DateTime::createFromFormat('Y-m-d', $value);
+		if ( ! $date || $date->format('Y-m-d') !== $value)
+		{
+			$this->form_validation->set_message('_valid_date', 'Format tanggal harus YYYY-MM-DD.');
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	/**
+	 * @param int $id
+	 * @return array
+	 */
+	private function _list_or_404($id)
+	{
+		$list = $this->delivery_model->get_list($id);
+		if ( ! $list)
+		{
+			show_404();
+		}
+		return $list;
+	}
+
+	private function _is_editable(array $list)
+	{
+		return in_array($list['status'], $this->editable_statuses, TRUE);
+	}
+
+	private function _nullable($field)
+	{
+		$value = trim((string) $this->input->post($field));
+		return ($value === '') ? NULL : $value;
+	}
+
+	private function _get_date()
+	{
+		$date = trim((string) $this->input->get('date', TRUE));
+		if ($date === '')
+		{
+			return date('Y-m-d');
+		}
+
+		$d = DateTime::createFromFormat('Y-m-d', $date);
+		if ( ! $d || $d->format('Y-m-d') !== $date)
+		{
+			return date('Y-m-d');
+		}
+		return $date;
+	}
+
+	private function _session_filter()
+	{
+		$session = (string) $this->input->get('session', TRUE);
+		return in_array($session, array('pagi', 'sore'), TRUE) ? $session : '';
+	}
+
+	private function _status_filter()
+	{
+		$status = (string) $this->input->get('status', TRUE);
+		return in_array($status, array('draft', 'published', 'completed', 'cancelled'), TRUE) ? $status : '';
+	}
+
+	private function _require_post()
+	{
+		if ($this->input->method() !== 'post')
+		{
+			show_404();
+		}
+	}
+}

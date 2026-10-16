@@ -24,6 +24,11 @@ CREATE DATABASE IF NOT EXISTS `faqihmart_crm`
 
 USE `faqihmart_crm`;
 
+-- Bersihkan tabel lama sebelum membuat ulang. Urutannya penting karena
+-- foreign key: tabel pengiriman harus dibuang sebelum `admins`/`customers`.
+DROP TABLE IF EXISTS `delivery_items`;
+DROP TABLE IF EXISTS `delivery_lists`;
+
 -- ---------------------------------------------------------------------
 -- Tabel: admins
 -- Hanya admin yang dapat login. Tidak ada registrasi publik.
@@ -84,4 +89,64 @@ CREATE TABLE `customers` (
   CONSTRAINT `chk_customers_coordinate_pair`
     CHECK ((`latitude` IS NULL AND `longitude` IS NULL)
         OR (`latitude` IS NOT NULL AND `longitude` IS NOT NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Tabel: delivery_lists
+-- Daftar tujuan pengiriman per tanggal & sesi (pagi/sore).
+-- status: draft -> published -> completed | cancelled
+-- Akses driver memakai token acak:
+--   token_hash = SHA-256(token) untuk pencarian (aman, tidak mudah ditebak)
+--   token_enc  = token terenkripsi agar admin dapat menyalin ulang tautan
+-- Akses yang sudah dicabut ditandai token_revoked_at.
+-- ---------------------------------------------------------------------
+CREATE TABLE `delivery_lists` (
+  `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `delivery_date`    DATE         NOT NULL,
+  `session`          ENUM('pagi','sore') NOT NULL,
+  `title`            VARCHAR(150) NULL,
+  `status`           ENUM('draft','published','completed','cancelled') NOT NULL DEFAULT 'draft',
+  `token_hash`       CHAR(64)     NULL,
+  `token_enc`        TEXT         NULL,
+  `token_created_at` DATETIME     NULL,
+  `token_revoked_at` DATETIME     NULL,
+  `published_at`     DATETIME     NULL,
+  `created_by`       INT UNSIGNED NULL,
+  `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_delivery_token_hash` (`token_hash`),
+  KEY `idx_delivery_date_session` (`delivery_date`, `session`),
+  KEY `idx_delivery_status` (`status`),
+  CONSTRAINT `fk_delivery_created_by`
+    FOREIGN KEY (`created_by`) REFERENCES `admins` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Tabel: delivery_items
+-- Tujuan (baris) dalam sebuah daftar pengiriman; merujuk pelanggan CRM.
+-- status tujuan: pending -> in_progress -> done
+-- UNIQUE(list, customer) mencegah pelanggan ganda pada daftar yang sama,
+-- tetapi pelanggan yang sama tetap boleh ada di daftar/sesi lain.
+-- Riwayat tetap utuh walau pelanggan diarsipkan (operator LEFT JOIN).
+-- ---------------------------------------------------------------------
+CREATE TABLE `delivery_items` (
+  `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `delivery_list_id` INT UNSIGNED NOT NULL,
+  `customer_id`      INT UNSIGNED NOT NULL,
+  `sort_order`       INT UNSIGNED NOT NULL DEFAULT 0,
+  `note`             TEXT         NULL,
+  `status`           ENUM('pending','in_progress','done') NOT NULL DEFAULT 'pending',
+  `completed_at`     DATETIME     NULL,
+  `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_delivery_item` (`delivery_list_id`, `customer_id`),
+  KEY `idx_delivery_items_order` (`delivery_list_id`, `sort_order`),
+  KEY `idx_delivery_items_status` (`status`),
+  KEY `idx_delivery_items_customer` (`customer_id`),
+  CONSTRAINT `fk_delivery_item_list`
+    FOREIGN KEY (`delivery_list_id`) REFERENCES `delivery_lists` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_delivery_item_customer`
+    FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

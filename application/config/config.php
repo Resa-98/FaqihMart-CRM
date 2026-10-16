@@ -26,6 +26,20 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $config['base_url'] = 'http://localhost/Faqihmart-CRM/';
 
 /*
+| Agar tautan (mis. tautan driver) mengikuti host yang dipakai browser, base_url
+| dibuat dinamis: dibuka dari "localhost" menghasilkan tautan localhost, dibuka
+| dari IP LAN (mis. http://192.168.1.5/Faqihmart-CRM/) menghasilkan tautan IP yang
+| bisa dibuka dari HP. Untuk PRODUKSI, hapus blok ini dan set URL tetap, mis.
+| $config['base_url'] = 'https://crm.contoh.id/';
+*/
+if (isset($_SERVER['HTTP_HOST']))
+{
+	$scheme = ( ! empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off') ? 'https' : 'http';
+	$base   = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/');
+	$config['base_url'] = $scheme.'://'.$_SERVER['HTTP_HOST'].$base.'/';
+}
+
+/*
 |--------------------------------------------------------------------------
 | Index File
 |--------------------------------------------------------------------------

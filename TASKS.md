@@ -28,6 +28,14 @@ sesuai permintaan.
 | 14 | Dokumentasi (README, backup/restore) | Done | Instalasi, konfigurasi, login awal, backup/restore |
 | 15 | Perlindungan seluruh halaman | Done | `Welcome` juga dialihkan lewat `MY_Controller` |
 | 16 | Ikon Maps + simpan tautan realtime di kolom daftar | Done | Kolom "Peta": ikon buka Maps + editor inline AJAX (`customers/{id}/maps`) |
+| 17 | Skema pengiriman (`delivery_lists`, `delivery_items`) | Done | FK ke `customers`/`admins`; UNIQUE(list,customer); token hash + terenkripsi |
+| 18 | Model pengiriman (`Delivery_model`) | Done | CRUD daftar/tujuan, urutan, status, token, progres & statistik |
+| 19 | Dashboard & daftar pengiriman (admin) | Done | Ringkasan hari ini (pagi/sore, belum/selesai) + filter tanggal/sesi/status |
+| 20 | Pembuatan daftar & pemilihan pelanggan | Done | Tanggal, sesi, judul; cari pelanggan aktif + Tambah; cegah duplikat dalam daftar |
+| 21 | Kelola tujuan | Done | Urutkan naik/turun, catatan per tujuan, hapus; terkunci saat selesai/dibatalkan |
+| 22 | Publikasi & tautan driver | Done | Publikasi menghasilkan token; salin/Bagikan WhatsApp; regenerate & cabut akses |
+| 23 | Halaman driver (mobile-first, tanpa login) | Done | Alamat, patokan, catatan, Buka Maps, Salin Alamat, ubah status, progres |
+| 24 | Keamanan pengiriman | Done | Token acak 64 hex disimpan sebagai hash; akses dicabut langsung ditolak; CSRF semua POST |
 
 ## Verifikasi Manual
 
@@ -49,6 +57,16 @@ Diuji melalui Apache + MySQL lokal:
 - Google Maps membuka tautan dengan `rel="noopener noreferrer"`.
 - 404 untuk pelanggan tidak ada; endpoint arsip hanya menerima POST.
 - Tidak ada error/deprecation tampil pada halaman.
+- Pengiriman: buat daftar (tanggal+sesi) → tambah 3 pelanggan → duplikat ditolak dengan
+  peringatan → catatan tersimpan → urutan naik/turun berubah.
+- Publikasi menghasilkan token 64 hex; hash tersimpan; halaman driver tampil (nama, alamat,
+  patokan, Maps untuk yang punya lokasi, peringatan untuk yang belum terverifikasi).
+- Driver ubah status tujuan → progres "1 dari 3 selesai" benar; completed_at terisi.
+- Daftar selesai → halaman driver tetap tampil read-only, perubahan status ditolak.
+- Batalkan/draft → tautan driver 404; cabut akses → tautan lama 404.
+- Regenerate → tautan baru aktif, tautan lama mati; token acak 404.
+- Status driver tanpa token CSRF → 403; endpoint POST-only via GET → 404.
+- Statistik dashboard pengiriman (Pagi/Sore/Belum/Selesai) sesuai data.
 
 ## Masalah / Catatan Terbuka
 

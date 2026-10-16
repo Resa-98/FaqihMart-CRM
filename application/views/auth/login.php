@@ -5,6 +5,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/webp" href="<?= base_url('assets/icon-logo.webp') ?>">
+<link rel="apple-touch-icon" href="<?= base_url('assets/icon-logo.webp') ?>">
 <title>Login &middot; CRM Faqih Mart</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
@@ -14,8 +16,9 @@ tailwind.config = { theme: { extend: { colors: { primary: { DEFAULT: '#16A34A', 
 <body class="min-h-screen bg-gray-100 flex items-center justify-center p-4">
 	<div class="w-full max-w-sm">
 		<div class="mb-6 text-center">
-			<h1 class="text-2xl font-bold text-primary">CRM Faqih Mart</h1>
-			<p class="text-sm text-gray-500">Masuk untuk mengelola data pelanggan</p>
+			<h1 class="sr-only">CRM Faqih Mart</h1>
+			<img src="<?= base_url('assets/primary-logo.webp') ?>" alt="CRM Faqih Mart" class="mx-auto h-16 w-auto">
+			<p class="mt-3 text-sm text-gray-500">Masuk untuk mengelola data pelanggan</p>
 		</div>
 
 		<div class="rounded-lg bg-white p-6 shadow-sm">

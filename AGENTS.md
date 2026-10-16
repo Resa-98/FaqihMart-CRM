@@ -17,13 +17,15 @@ distribusi sembako, fokus pencarian & verifikasi alamat + Google Maps.
 
 - **Auth**: tabel `admins`, password `password_hash()` bcrypt. Tidak ada registrasi publik.
   `application/core/MY_Controller.php` adalah gerbang autentikasi; semua controller internal
-  (`Dashboard`, `Customers`, `Welcome`) meng-extends-nya. `Auth` extends `CI_Controller`
-  karena menangani halaman publik (login/ganti password).
+  (`Dashboard`, `Customers`, `Deliveries`, `Welcome`) meng-extends-nya. `Auth` dan `Driver`
+  extends `CI_Controller` karena menangani halaman publik (login/ganti password, akses driver
+  berbasis token).
 - **Layout**: view dirender via `MY_Controller::render($view, $data)` →
   `layouts/header.php` (memuat sidebar + flash) + view + `layouts/footer.php`.
   `header.php` membutuhkan `$admin`; controller wajib mengirim `page_title`.
-- **Model**: `Customer_model` (query/filter/stats/kode) dan `Admin_model`. Query Builder,
-  tanpa ORM.
+  Halaman driver (`views/driver/*`) memakai layout minimal sendiri (tanpa sidebar admin).
+- **Model**: `Customer_model` (query/filter/stats/kode), `Admin_model`, dan `Delivery_model`
+  (daftar & tujuan pengiriman, token, progres). Query Builder, tanpa ORM.
 - **Soft delete** lewat `customers.archived_at`; daftar aktif memfilter `archived_at IS NULL`.
 - **customer_code** otomatis format `FM-00001` (prefix + nomor urut, cek unik).
 - **location_status**: `incomplete` (Alamat lengkap kosong) → `unverified` (default) →
@@ -33,6 +35,17 @@ distribusi sembako, fokus pencarian & verifikasi alamat + Google Maps.
   host `google.<tld>`/`maps.google.<tld>`/`maps.app.goo.gl`/`goo.gl/maps`, wajib https).
   Tautan eksternal wajib `target="_blank" rel="noopener noreferrer"`. Tanpa API berbayar.
 - **Duplikat WhatsApp**: peringatan + tombol "Simpan Tetap" (`confirm_duplicate=1`), bukan blokir keras.
+- **Daftar Pengiriman**: tabel `delivery_lists` (per tanggal + `session` pagi/sore, `status`
+  draft/published/completed/cancelled) dan `delivery_items` (FK ke `customers` + `delivery_lists`,
+  `sort_order`, `note`, `status` pending/in_progress/done). UNIQUE(list,customer) mencegah
+  pelanggan ganda dalam satu daftar, tetapi pelanggan sama boleh di sesi lain. Riwayat tidak
+  dihapus permanen (batalkan = status `cancelled`); item pelanggan terarsip tetap tampil (LEFT JOIN).
+- **Akses driver berbasis token**: `Driver` extends `CI_Controller` (publik, **bukan**
+  `MY_Controller`). Token acak 64 hex; disimpan sebagai `token_hash` SHA-256 (untuk lookup) +
+  `token_enc` terenkripsi (agar admin dapat menyalin ulang tautan). `find_by_token()` hanya
+  mengembalikan daftar berstatus `published`/`completed` dan belum dicabut. Cabut/regenerate
+  mematikan tautan lama. Driver hanya boleh memperbarui status tujuan (POST + CSRF), tidak ada
+  akses ke data pelanggan atau daftar lain.
 - **DB config** membaca env (`DB_HOSTNAME/USERNAME/PASSWORD/DATABASE`) di `database.php` —
   jangan hardcode kredensial. Default XAMPP: root tanpa password, DB `faqihmart_crm`.
 
@@ -50,7 +63,9 @@ distribusi sembako, fokus pencarian & verifikasi alamat + Google Maps.
 ## Hal yang mudah terlewat
 
 - Autoload sudah memuat `database`, `session`, `form_validation`, dan helper `url`/`form`.
-  Helper `maps` dimuat per-controller.
+  Helper `maps` dan `delivery` dimuat per-controller (Deliveries & Driver).
+- `delivery_lists.session` adalah nama kolom (kata kunci non-reserved MySQL); Query Builder
+  otomatis mem-backtick. Jangan menulis query mentah tanpa backtick.
 - Sesi file-based di `application/cache/sessions` (di-gitignore). Direktori ini harus ada;
   buat bila hilang.
 - **PHP 8.2 + CI3** memunculkan deprecation "dynamic property". `index.php` mengecualikan

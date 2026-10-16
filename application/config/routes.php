@@ -65,3 +65,22 @@ $route['customers/export'] = 'customers/export';
 $route['customers/(:num)/maps'] = 'customers/saveMapsUrl/$1';
 $route['customers/(:num)'] = 'customers/show/$1';
 $route['customers/(:num)/edit'] = 'customers/edit/$1';
+
+// Deliveries (admin)
+$route['deliveries'] = 'deliveries/index';
+$route['deliveries/create'] = 'deliveries/create';
+$route['deliveries/store'] = 'deliveries/store';
+$route['deliveries/(:num)'] = 'deliveries/show/$1';
+$route['deliveries/(:num)/edit'] = 'deliveries/edit/$1';
+$route['deliveries/(:num)/update'] = 'deliveries/update/$1';
+$route['deliveries/(:num)/items'] = 'deliveries/addItem/$1';
+$route['deliveries/(:num)/items/(:num)/remove'] = 'deliveries/removeItem/$1/$2';
+$route['deliveries/(:num)/items/(:num)/note'] = 'deliveries/updateItemNote/$1/$2';
+$route['deliveries/(:num)/items/(:num)/move/(up|down)'] = 'deliveries/moveItem/$1/$2/$3';
+$route['deliveries/(:num)/status'] = 'deliveries/setStatus/$1';
+$route['deliveries/(:num)/regenerate'] = 'deliveries/regenerate/$1';
+$route['deliveries/(:num)/revoke'] = 'deliveries/revoke/$1';
+
+// Driver (publik, berbasis token)
+$route['d/(:any)/items/(:num)/status'] = 'driver/updateItemStatus/$1/$2';
+$route['d/(:any)'] = 'driver/view/$1';
