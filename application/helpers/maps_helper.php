@@ -142,11 +142,11 @@ if ( ! function_exists('location_status_badge_classes'))
 		switch ($status)
 		{
 			case 'verified':
-				return 'bg-green-100 text-green-800';
+				return 'fm-badge fm-badge-primary';
 			case 'unverified':
-				return 'bg-amber-100 text-amber-800';
-			default:
-				return 'bg-red-100 text-red-800';
+				return 'fm-badge fm-badge-amber';
+			default: // incomplete
+				return 'fm-badge fm-badge-red';
 		}
 	}
 }

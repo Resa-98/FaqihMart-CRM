@@ -61,7 +61,10 @@ $route['change-password'] = 'auth/changePassword';
 // Customers
 $route['customers'] = 'customers/index';
 $route['customers/create'] = 'customers/create';
+$route['customers/suggest'] = 'customers/suggest';
 $route['customers/export'] = 'customers/export';
+$route['customers/import'] = 'customers/import';
+$route['customers/import/process'] = 'customers/importProcess';
 $route['customers/(:num)/maps'] = 'customers/saveMapsUrl/$1';
 $route['customers/(:num)'] = 'customers/show/$1';
 $route['customers/(:num)/edit'] = 'customers/edit/$1';
@@ -76,6 +79,8 @@ $route['deliveries/(:num)/update'] = 'deliveries/update/$1';
 $route['deliveries/(:num)/items'] = 'deliveries/addItem/$1';
 $route['deliveries/(:num)/items/(:num)/remove'] = 'deliveries/removeItem/$1/$2';
 $route['deliveries/(:num)/items/(:num)/note'] = 'deliveries/updateItemNote/$1/$2';
+$route['deliveries/(:num)/items/(:num)/order'] = 'deliveries/updateItemOrder/$1/$2';
+$route['deliveries/(:num)/items/(:num)/receipt'] = 'deliveries/itemReceipt/$1/$2';
 $route['deliveries/(:num)/items/(:num)/move/(up|down)'] = 'deliveries/moveItem/$1/$2/$3';
 $route['deliveries/(:num)/status'] = 'deliveries/setStatus/$1';
 $route['deliveries/(:num)/regenerate'] = 'deliveries/regenerate/$1';
@@ -83,4 +88,5 @@ $route['deliveries/(:num)/revoke'] = 'deliveries/revoke/$1';
 
 // Driver (publik, berbasis token)
 $route['d/(:any)/items/(:num)/status'] = 'driver/updateItemStatus/$1/$2';
+$route['d/(:any)/items/(:num)/receipt'] = 'driver/receipt/$1/$2';
 $route['d/(:any)'] = 'driver/view/$1';

@@ -32,6 +32,18 @@ class MY_Controller extends CI_Controller
 			redirect('login');
 			exit;
 		}
+
+		if ( ! empty($this->admin['must_change_password']))
+		{
+			$class = strtolower($this->router->fetch_class());
+			$method = strtolower($this->router->fetch_method());
+			if ( ! ($class === 'auth' && $method === 'changepassword'))
+			{
+				$this->session->set_flashdata('error', 'Wajib ganti password default sebelum melanjutkan.');
+				redirect('change-password');
+				exit;
+			}
+		}
 	}
 
 	/**

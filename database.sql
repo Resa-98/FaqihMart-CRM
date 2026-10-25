@@ -6,7 +6,7 @@
 -- atau impor file ini lewat phpMyAdmin.
 --
 -- Setelah impor, login awal:
---   URL      : http://localhost/Faqihmart-CRM/login
+--   URL      : http://localhost/FaqihMart-CRM/login
 --   Username : admin
 --   Password : admin123
 -- WAJIB segera ganti password lewat menu "Ganti Password" setelah login.
@@ -35,19 +35,33 @@ DROP TABLE IF EXISTS `delivery_lists`;
 -- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS `admins`;
 CREATE TABLE `admins` (
-  `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `username`      VARCHAR(50)  NOT NULL,
-  `password_hash` VARCHAR(255) NOT NULL,
-  `name`          VARCHAR(100) NOT NULL,
-  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id`                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `username`            VARCHAR(50)  NOT NULL,
+  `password_hash`       VARCHAR(255) NOT NULL,
+  `name`                VARCHAR(100) NOT NULL,
+  `must_change_password` TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_admins_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Admin awal. Password: admin123 (hash bcrypt). Ganti setelah login.
-INSERT INTO `admins` (`username`, `password_hash`, `name`) VALUES
-('admin', '$2y$10$ki0TNnd1zTcROUZUqUhzlOkD8JGza8milpEiimcVA2ZGiWfUlekny', 'Administrator');
+-- Login attempts untuk proteksi brute-force
+DROP TABLE IF EXISTS `login_attempts`;
+CREATE TABLE `login_attempts` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `username`   VARCHAR(50)     NOT NULL,
+  `ip_address` VARCHAR(45)     NOT NULL,
+  `success`    TINYINT(1)      NOT NULL DEFAULT 0,
+  `attempted_at` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_login_attempts_user_ip` (`username`, `ip_address`),
+  KEY `idx_login_attempts_time` (`attempted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `admins` (`username`, `password_hash`, `name`, `must_change_password`) VALUES
+('admin', '$2y$10$ki0TNnd1zTcROUZUqUhzlOkD8JGza8milpEiimcVA2ZGiWfUlekny', 'Administrator', 1);
 
 -- ---------------------------------------------------------------------
 -- Tabel: customers
@@ -126,6 +140,9 @@ CREATE TABLE `delivery_lists` (
 -- Tabel: delivery_items
 -- Tujuan (baris) dalam sebuah daftar pengiriman; merujuk pelanggan CRM.
 -- status tujuan: pending -> in_progress -> done
+-- order_details = rincian pesanan (teks bebas, satu baris per produk).
+-- receipt_file  = nama file foto struk di uploads/receipts/ (bukan path lengkap);
+--                 file hanya disajikan lewat endpoint admin/driver, tidak langsung.
 -- UNIQUE(list, customer) mencegah pelanggan ganda pada daftar yang sama,
 -- tetapi pelanggan yang sama tetap boleh ada di daftar/sesi lain.
 -- Riwayat tetap utuh walau pelanggan diarsipkan (operator LEFT JOIN).
@@ -136,6 +153,8 @@ CREATE TABLE `delivery_items` (
   `customer_id`      INT UNSIGNED NOT NULL,
   `sort_order`       INT UNSIGNED NOT NULL DEFAULT 0,
   `note`             TEXT         NULL,
+  `order_details`    TEXT         NULL,
+  `receipt_file`     VARCHAR(255) NULL,
   `status`           ENUM('pending','in_progress','done') NOT NULL DEFAULT 'pending',
   `completed_at`     DATETIME     NULL,
   `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,

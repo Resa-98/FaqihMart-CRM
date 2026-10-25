@@ -1,0 +1,9 @@
+# Foto struk pelanggan tidak boleh diakses langsung.
+# File hanya disajikan lewat controller admin/driver yang memeriksa sesi/token.
+<IfModule authz_core_module>
+	Require all denied
+</IfModule>
+<IfModule !authz_core_module>
+	Order allow,deny
+	Deny from all
+</IfModule>

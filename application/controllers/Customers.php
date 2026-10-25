@@ -23,15 +23,43 @@ class Customers extends MY_Controller
 		$page       = min($page, $total_page);
 
 		$data = array(
-			'page_title'  => 'Pelanggan',
-			'customers'   => $this->customer_model->get_all($filters, $per_page, ($page - 1) * $per_page),
-			'filters'     => $filters,
-			'total'       => $total,
-			'page'        => $page,
-			'total_page'  => $total_page,
+			'page_title'       => 'Pelanggan',
+			'customers'        => $this->customer_model->get_all($filters, $per_page, ($page - 1) * $per_page),
+			'filters'          => $filters,
+			'total'            => $total,
+			'page'             => $page,
+			'total_page'       => $total_page,
+			'customer_suggest' => TRUE,
 		);
 
 		$this->render('customers/index', $data);
+	}
+
+	/**
+	 * Endpoint JSON saran kata kunci pencarian (khusus admin).
+	 *
+	 * Menghormati filter view (aktif/arsip) dan status lokasi yang sedang
+	 * aktif di halaman Pelanggan.
+	 */
+	public function suggest()
+	{
+		if ($this->input->method() !== 'get')
+		{
+			show_404();
+		}
+
+		$filters = $this->_filters();
+		$q       = $filters['q'];
+
+		$suggestions = (strlen($q) < 2)
+			? array()
+			: $this->customer_model->search_suggestions($filters, 6);
+
+		$this->_json(array(
+			'ok'          => TRUE,
+			'q'           => $q,
+			'suggestions' => $suggestions,
+		));
 	}
 
 	public function create()
@@ -432,5 +460,174 @@ class Customers extends MY_Controller
 			return "'".$value;
 		}
 		return $value;
+	}
+
+	public function import()
+	{
+		$data = array(
+			'page_title' => 'Impor Pelanggan',
+		);
+
+		$this->render('customers/import', $data);
+	}
+
+	public function importProcess()
+	{
+		if ($this->input->method() !== 'post')
+		{
+			show_404();
+		}
+
+		$config['upload_path']   = './uploads/';
+		$config['allowed_types'] = 'csv|txt';
+		$config['max_size']      = 2048;
+		$config['encrypt_name']  = TRUE;
+		$config['remove_spaces'] = TRUE;
+
+		if ( ! is_dir($config['upload_path']))
+		{
+			@mkdir($config['upload_path'], 0755, TRUE);
+		}
+
+		$this->load->library('upload', $config);
+
+		if ( ! $this->upload->do_upload('csv_file'))
+		{
+			$error = strip_tags($this->upload->display_errors());
+			$this->session->set_flashdata('error', 'Gagal mengunggah file: '.$error);
+			redirect('customers/import');
+			return;
+		}
+
+		$upload_data = $this->upload->data();
+		$filepath    = $upload_data['full_path'];
+
+		$handle = fopen($filepath, 'r');
+		if ( ! $handle)
+		{
+			@unlink($filepath);
+			$this->session->set_flashdata('error', 'Tidak dapat membaca file CSV.');
+			redirect('customers/import');
+			return;
+		}
+
+		$first = fread($handle, 3);
+		if ($first !== "\xEF\xBB\xBF")
+		{
+			rewind($handle);
+		}
+		else
+		{
+			// BOM sudah dibaca, lanjut
+		}
+
+		$header = fgetcsv($handle);
+		if ( ! $header)
+		{
+			fclose($handle);
+			@unlink($filepath);
+			$this->session->set_flashdata('error', 'File CSV kosong atau format tidak valid.');
+			redirect('customers/import');
+			return;
+		}
+
+		$header = array_map(function($h){
+			$h = trim((string) $h);
+			$h = str_replace(array("\xEF\xBB\xBF", '"', "'"), '', $h);
+			return strtolower($h);
+		}, $header);
+
+		$inserted = 0;
+		$updated   = 0;
+		$skipped   = 0;
+
+		while (($row = fgetcsv($handle)) !== FALSE)
+		{
+			if (empty($row) || (count($row) === 1 && trim($row[0]) === ''))
+			{
+				continue;
+			}
+
+			$data = array();
+			foreach ($header as $i => $key)
+			{
+				if ( ! isset($row[$i]))
+				{
+					continue;
+				}
+				$val = trim((string) $row[$i]);
+				$data[$key] = ($val === '') ? NULL : $val;
+			}
+
+			$customer_code = isset($data['kode']) ? $data['kode'] : (isset($data['customer_code']) ? $data['customer_code'] : NULL);
+			$full_name     = isset($data['nama']) ? $data['nama'] : (isset($data['full_name']) ? $data['full_name'] : NULL);
+			$whatsapp      = isset($data['whatsapp']) ? $data['whatsapp'] : (isset($data['nomor whatsapp']) ? $data['nomor whatsapp'] : (isset($data['whatsapp_number']) ? $data['whatsapp_number'] : NULL));
+			$status_raw    = isset($data['status lokasi']) ? $data['status lokasi'] : (isset($data['location_status']) ? $data['location_status'] : NULL);
+			$created_at    = isset($data['dibuat']) ? $data['dibuat'] : (isset($data['created_at']) ? $data['created_at'] : NULL);
+
+			if (empty($customer_code) || empty($full_name) || empty($whatsapp))
+			{
+				$skipped++;
+				continue;
+			}
+
+			$wa_clean = preg_replace('/[^0-9]/', '', (string) $whatsapp);
+			if ($wa_clean === '')
+			{
+				$skipped++;
+				continue;
+			}
+
+			$status_map = strtolower(trim((string) $status_raw));
+			if (in_array($status_map, array('terverifikasi', 'verified', 'sudah terverifikasi'), TRUE))
+			{
+				$location_status = 'verified';
+			}
+			elseif (in_array($status_map, array('belum lengkap', 'incomplete'), TRUE))
+			{
+				$location_status = 'incomplete';
+			}
+			else
+			{
+				$location_status = 'unverified';
+			}
+
+			$payload = array(
+				'customer_code'   => trim((string) $customer_code),
+				'full_name'       => trim((string) $full_name),
+				'whatsapp_number' => $wa_clean,
+				'housing_name'    => isset($data['perumahan']) ? $data['perumahan'] : (isset($data['housing_name']) ? $data['housing_name'] : NULL),
+				'full_address'    => isset($data['alamat lengkap']) ? $data['alamat lengkap'] : (isset($data['full_address']) ? $data['full_address'] : NULL),
+				'block_number'    => isset($data['blok/nomor']) ? $data['blok/nomor'] : (isset($data['block_number']) ? $data['block_number'] : NULL),
+				'rt_rw'           => isset($data['rt/rw']) ? $data['rt/rw'] : (isset($data['rt_rw']) ? $data['rt_rw'] : NULL),
+				'landmark'        => isset($data['patokan']) ? $data['patokan'] : (isset($data['landmark']) ? $data['landmark'] : NULL),
+				'latitude'        => isset($data['latitude']) ? $data['latitude'] : NULL,
+				'longitude'       => isset($data['longitude']) ? $data['longitude'] : NULL,
+				'google_maps_url' => isset($data['google maps']) ? $data['google maps'] : (isset($data['google_maps_url']) ? $data['google_maps_url'] : NULL),
+				'delivery_notes'  => isset($data['catatan pengiriman']) ? $data['catatan pengiriman'] : (isset($data['delivery_notes']) ? $data['delivery_notes'] : NULL),
+				'location_status' => $location_status,
+				'updated_at'      => date('Y-m-d H:i:s'),
+				'archived_at'     => NULL,
+				'created_at'      => ($created_at && $created_at !== NULL) ? $created_at : date('Y-m-d H:i:s'),
+			);
+
+			$existing = $this->db->get_where('customers', array('customer_code' => $payload['customer_code']))->row_array();
+			if ($existing)
+			{
+				$this->db->where('id', $existing['id'])->update('customers', $payload);
+				$updated++;
+			}
+			else
+			{
+				$this->db->insert('customers', $payload);
+				$inserted++;
+			}
+		}
+
+		fclose($handle);
+		@unlink($filepath);
+
+		$this->session->set_flashdata('success', 'Impor selesai. Ditambahkan: '.$inserted.', Diperbarui: '.$updated.', Dilewati: '.$skipped.'.');
+		redirect('customers');
 	}
 }

@@ -6,6 +6,11 @@ application/cache/*
 application/logs/*
 !application/logs/index.html
 
+# Foto struk pelanggan: jangan pernah masuk repository.
+uploads/receipts/*
+!uploads/receipts/.htaccess
+!uploads/receipts/index.html
+
 !application/*/.htaccess
 
 composer.lock

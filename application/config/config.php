@@ -23,12 +23,12 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 | a PHP script and you can easily do that on your own.
 |
 */
-$config['base_url'] = 'http://localhost/Faqihmart-CRM/';
+$config['base_url'] = 'http://localhost/FaqihMart-CRM/';
 
 /*
 | Agar tautan (mis. tautan driver) mengikuti host yang dipakai browser, base_url
 | dibuat dinamis: dibuka dari "localhost" menghasilkan tautan localhost, dibuka
-| dari IP LAN (mis. http://192.168.1.5/Faqihmart-CRM/) menghasilkan tautan IP yang
+| dari IP LAN (mis. http://192.168.1.5/FaqihMart-CRM/) menghasilkan tautan IP yang
 | bisa dibuka dari HP. Untuk PRODUKSI, hapus blok ini dan set URL tetap, mis.
 | $config['base_url'] = 'https://crm.contoh.id/';
 */
@@ -340,7 +340,16 @@ $config['cache_query_string'] = FALSE;
 | https://codeigniter.com/userguide3/libraries/encryption.html
 |
 */
-$config['encryption_key'] = '280f36f31921579d524e5bafd6195571';
+$encryption_key_env = getenv('ENCRYPTION_KEY');
+if ($encryption_key_env !== FALSE && $encryption_key_env !== '')
+{
+	$config['encryption_key'] = $encryption_key_env;
+}
+elseif ( ! isset($config['encryption_key']) || $config['encryption_key'] === '')
+{
+	// Ganti nilai ini di produksi dan pindahkan ke environment variable.
+	$config['encryption_key'] = '280f36f31921579d524e5bafd6195571';
+}
 
 /*
 |--------------------------------------------------------------------------

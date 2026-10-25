@@ -18,7 +18,7 @@ sesuai permintaan.
 | 4 | Gerbang autentikasi (`MY_Controller`) | Done | Semua controller internal extends `MY_Controller` |
 | 5 | Dashboard + statistik | Done | Aktif/verified/unverified/incomplete + pelanggan terbaru |
 | 6 | CRUD pelanggan | Done | Tambah, detail, edit, arsipkan, pulihkan |
-| 7 | Pencarian & filter | Done | Nama/WhatsApp/alamat + filter status + tab arsip |
+| 7 | Pencarian & filter | Done | Nama/WhatsApp/alamat/blok/RT-RW + filter status + tab arsip |
 | 8 | Validasi server & input sticky | Done | Koordinat berpasangan + rentang, URL Maps, field wajib |
 | 9 | Peringatan WhatsApp duplikat | Done | Peringatan + tombol "Simpan Tetap" (boleh dilanjutkan) |
 | 10 | Status lokasi otomatis | Done | incomplete/unverified/verified; verified butuh bukti lokasi |
@@ -36,6 +36,8 @@ sesuai permintaan.
 | 22 | Publikasi & tautan driver | Done | Publikasi menghasilkan token; salin/Bagikan WhatsApp; regenerate & cabut akses |
 | 23 | Halaman driver (mobile-first, tanpa login) | Done | Alamat, patokan, catatan, Buka Maps, Salin Alamat, ubah status, progres |
 | 24 | Keamanan pengiriman | Done | Token acak 64 hex disimpan sebagai hash; akses dicabut langsung ditolak; CSRF semua POST |
+| 25 | Rincian pesanan & foto struk per tujuan | Done | Teks multiline + foto JPG/PNG maks. 5 MB; tampil di admin & driver; file privat di `uploads/receipts` disajikan lewat sesi/token |
+| 26 | Saran kata kunci pencarian | Done | `GET customers/suggest` (admin) + autocomplete ringkas di Pelanggan & Tambah Tujuan; tipe nama/WA/alamat-perumahan/blok-RT-RW/kode, maksimal 6 saran; hormati filter aktif/arsip/status; tanpa perubahan skema |
 
 ## Verifikasi Manual
 
@@ -67,6 +69,28 @@ Diuji melalui Apache + MySQL lokal:
 - Regenerate → tautan baru aktif, tautan lama mati; token acak 404.
 - Status driver tanpa token CSRF → 403; endpoint POST-only via GET → 404.
 - Statistik dashboard pengiriman (Pagi/Sore/Belum/Selesai) sesuai data.
+- Rincian pesanan tersimpan per tujuan dan tampil di admin serta halaman driver; line break
+  dipertahankan.
+- Foto struk JPG/PNG tersimpan dengan nama acak; thumbnail dan tombol lihat struk berfungsi di
+  admin (termasuk saat draft) dan driver; akses langsung ke `uploads/receipts/...` ditolak 403.
+- Ganti struk menghapus file lama; hapus struk menghapus file; hapus tujuan ikut menghapus file.
+- Upload file bukan gambar/ekstensi palsu/lebih dari 5 MB ditolak dengan pesan ramah; teks
+  rincian yang sudah diisi tetap tersimpan.
+- Daftar selesai membaca rincian/struk secara read-only; tautan dicabut/di-regenerate membuat
+  URL struk lama 404.
+- Saran pencarian muncul di halaman Pelanggan dan Tambah Tujuan; minimal 2 karakter, debounce
+  ±250 ms, maksimal 6 saran, dan duplikat digabung.
+- Saran nama/WA/alamat-perumahan/blok-RT-RW/kode tampil ringkas sebagai label tipe + kata kunci
+  (tanpa konteks pelanggan); urutan exact → prefix → contains.
+- Saran menghormati tab aktif/arsip dan filter status; panel Tambah Tujuan hanya data aktif.
+- WA `08...` dan `62...` saling menemukan meski ada spasi/tanda hubung; `RT 03`, `Blok Q`, dan
+  angka blok/RT menemukan data terkait.
+- Klik saran dan Enter pada saran mengisi kolom lalu langsung mencari; panah atas/bawah,
+  Escape, dan Tab bekerja; atribut combobox/listbox/`aria-activedescendant` terpasang.
+- Uji mobile 390 px: dropdown selebar kolom, opsi ≥48 px, input 16 px, tanpa scroll horizontal;
+  uji desktop juga berfungsi.
+- Endpoint `customers/suggest` tanpa login → redirect; wildcard `%`/`_` tidak membocorkan data;
+  nama berisi HTML di-escape dan ditampilkan sebagai teks.
 
 ## Masalah / Catatan Terbuka
 

@@ -105,16 +105,18 @@ class Deliveries extends MY_Controller
 		}
 
 		$raw_token = $this->delivery_model->reveal_token($list);
+		$editable  = $this->_is_editable($list);
 
 		$data = array(
-			'page_title'  => 'Daftar Pengiriman',
-			'list'        => $list,
-			'items'       => $items,
-			'progress'    => $this->delivery_model->progress($list['id']),
-			'editable'    => $this->_is_editable($list),
-			'q'           => $q,
-			'customers'   => $customers,
-			'driver_url'  => ($raw_token !== NULL) ? site_url('d/'.$raw_token) : NULL,
+			'page_title'       => 'Daftar Pengiriman',
+			'list'             => $list,
+			'items'            => $items,
+			'progress'         => $this->delivery_model->progress($list['id']),
+			'editable'         => $editable,
+			'customer_suggest' => $editable,
+			'q'                => $q,
+			'customers'        => $customers,
+			'driver_url'       => ($raw_token !== NULL) ? site_url('d/'.$raw_token) : NULL,
 		);
 
 		$this->render('deliveries/show', $data);
@@ -220,7 +222,11 @@ class Deliveries extends MY_Controller
 			show_404();
 		}
 
-		$this->delivery_model->remove_item($list['id'], $item_id);
+		if ($this->delivery_model->remove_item($list['id'], $item_id) && ! empty($item['receipt_file']))
+		{
+			$this->_delete_receipt($item['receipt_file']);
+		}
+
 		$this->session->set_flashdata('success', 'Tujuan dihapus dari daftar.');
 		redirect('deliveries/'.$list['id'].'#tujuan');
 	}
@@ -244,6 +250,99 @@ class Deliveries extends MY_Controller
 		$this->delivery_model->update_item_note($list['id'], $item_id, $this->input->post('note'));
 		$this->session->set_flashdata('success', 'Catatan tujuan disimpan.');
 		redirect('deliveries/'.$list['id'].'#tujuan');
+	}
+
+	public function updateItemOrder($id, $item_id)
+	{
+		$this->_require_post();
+		$list = $this->_list_or_404($id);
+
+		if ( ! $this->_is_editable($list))
+		{
+			$this->session->set_flashdata('error', 'Daftar ini tidak dapat diubah lagi.');
+			redirect('deliveries/'.$list['id']);
+		}
+
+		$item = $this->delivery_model->get_item($list['id'], $item_id);
+		if ( ! $item)
+		{
+			show_404();
+		}
+
+		$this->form_validation->set_rules('order_details', 'Rincian pesanan', 'trim|max_length[2000]');
+		$this->form_validation->set_message('max_length', 'Rincian pesanan maksimal 2000 karakter.');
+		if ($this->form_validation->run() === FALSE)
+		{
+			$this->session->set_flashdata('error', strip_tags($this->form_validation->error_string()));
+			redirect('deliveries/'.$list['id'].'#item-'.(int) $item['id']);
+		}
+
+		$details = trim((string) $this->input->post('order_details'));
+		$data    = array(
+			'order_details' => ($details === '') ? NULL : $details,
+		);
+
+		$old_receipt = isset($item['receipt_file']) ? (string) $item['receipt_file'] : '';
+		$new_receipt = NULL;
+		$upload_error = NULL;
+
+		$file_error = isset($_FILES['receipt']['error']) ? (int) $_FILES['receipt']['error'] : UPLOAD_ERR_NO_FILE;
+		$file_name  = isset($_FILES['receipt']['name']) ? (string) $_FILES['receipt']['name'] : '';
+		$attempted_upload = ($file_error !== UPLOAD_ERR_NO_FILE && $file_name !== '');
+		$remove_receipt   = ($this->input->post('remove_receipt') === '1');
+
+		if ($attempted_upload)
+		{
+			$new_receipt = $this->_upload_receipt($upload_error);
+			if ($new_receipt !== NULL)
+			{
+				$data['receipt_file'] = $new_receipt;
+			}
+		}
+		elseif ($remove_receipt)
+		{
+			$data['receipt_file'] = NULL;
+		}
+
+		if ( ! $this->delivery_model->update_item_order($list['id'], $item['id'], $data))
+		{
+			if ($new_receipt !== NULL)
+			{
+				$this->_delete_receipt($new_receipt);
+			}
+
+			$this->session->set_flashdata('error', 'Gagal menyimpan rincian pesanan.');
+			redirect('deliveries/'.$list['id'].'#item-'.(int) $item['id']);
+		}
+
+		if (($new_receipt !== NULL || ( ! $attempted_upload && $remove_receipt))
+			&& $old_receipt !== '' && $old_receipt !== $new_receipt)
+		{
+			$this->_delete_receipt($old_receipt);
+		}
+
+		if ($upload_error !== NULL)
+		{
+			log_message('error', 'Upload struk gagal (item '.$item['id'].'): '.$upload_error);
+			$this->session->set_flashdata('error', 'Rincian teks tersimpan, tetapi struk gagal diunggah. Gunakan JPG/PNG maksimal 5 MB.');
+			redirect('deliveries/'.$list['id'].'#item-'.(int) $item['id']);
+		}
+
+		$this->session->set_flashdata('success', 'Rincian pesanan disimpan.');
+		redirect('deliveries/'.$list['id'].'#item-'.(int) $item['id']);
+	}
+
+	public function itemReceipt($id, $item_id)
+	{
+		$list = $this->_list_or_404($id);
+		$item = $this->delivery_model->get_item($list['id'], $item_id);
+
+		if ( ! $item || empty($item['receipt_file']))
+		{
+			show_404();
+		}
+
+		$this->_send_receipt($item['receipt_file']);
 	}
 
 	public function moveItem($id, $item_id, $direction)
@@ -382,6 +481,99 @@ class Deliveries extends MY_Controller
 	{
 		$value = trim((string) $this->input->post($field));
 		return ($value === '') ? NULL : $value;
+	}
+
+	/**
+	 * Unggah foto struk. Mengembalikan nama file bila berhasil, NULL bila gagal.
+	 *
+	 * @param string $error Pesan kesalahan (diisi bila gagal).
+	 * @return string|null
+	 */
+	private function _upload_receipt(&$error)
+	{
+		$error = NULL;
+		$dir   = delivery_receipts_dir();
+
+		if ( ! is_dir($dir))
+		{
+			@mkdir($dir, 0755, TRUE);
+		}
+
+		if ( ! is_dir($dir) || ! is_writable($dir))
+		{
+			$error = 'Folder penyimpanan struk tidak dapat ditulis.';
+			return NULL;
+		}
+
+		$config = array(
+			'upload_path'     => $dir,
+			'allowed_types'   => 'jpg|jpeg|png',
+			'max_size'        => 5120,
+			'encrypt_name'    => TRUE,
+			'file_ext_tolower' => TRUE,
+			'remove_spaces'   => TRUE,
+			'detect_mime'     => TRUE,
+		);
+
+		$this->load->library('upload', $config);
+
+		if ( ! $this->upload->do_upload('receipt'))
+		{
+			$error = trim(strip_tags($this->upload->display_errors('', '')));
+			return NULL;
+		}
+
+		$upload_data = $this->upload->data();
+		$info = @getimagesize($upload_data['full_path']);
+		$ext  = strtolower(ltrim((string) $upload_data['file_ext'], '.'));
+		$types = array(
+			IMAGETYPE_JPEG => array('jpg', 'jpeg'),
+			IMAGETYPE_PNG  => array('png'),
+		);
+
+		if ($info === FALSE
+			|| ! isset($types[$info[2]])
+			|| ! in_array($ext, $types[$info[2]], TRUE))
+		{
+			@unlink($upload_data['full_path']);
+			$error = 'File bukan gambar JPG/PNG yang valid.';
+			return NULL;
+		}
+
+		return $upload_data['file_name'];
+	}
+
+	private function _delete_receipt($filename)
+	{
+		$path = delivery_receipt_path($filename);
+		if ($path !== NULL && is_file($path))
+		{
+			@unlink($path);
+		}
+	}
+
+	private function _send_receipt($filename)
+	{
+		$file = delivery_receipt_file($filename);
+		if ($file === NULL)
+		{
+			show_404();
+		}
+
+		$content = @file_get_contents($file['path']);
+		if ($content === FALSE)
+		{
+			show_404();
+		}
+
+		$this->output
+			->set_header('Content-Type: '.$file['mime'])
+			->set_header('Content-Disposition: inline; filename="'.$file['download_name'].'"')
+			->set_header('Content-Length: '.$file['size'])
+			->set_header('X-Content-Type-Options: nosniff')
+			->set_header('Cache-Control: private, max-age=0, must-revalidate')
+			->set_header('X-Robots-Tag: noindex, nofollow')
+			->set_output($content);
 	}
 
 	private function _get_date()

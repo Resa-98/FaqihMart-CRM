@@ -299,6 +299,35 @@ class Delivery_model extends CI_Model
 	}
 
 	/**
+	 * Perbarui rincian pesanan dan/atau nama file struk satu tujuan.
+	 *
+	 * @param int   $list_id
+	 * @param int   $item_id
+	 * @param array $data Kolom yang boleh diubah: order_details, receipt_file.
+	 * @return bool
+	 */
+	public function update_item_order($list_id, $item_id, array $data)
+	{
+		$allowed = array();
+		foreach (array('order_details', 'receipt_file') as $field)
+		{
+			if (array_key_exists($field, $data))
+			{
+				$allowed[$field] = $data[$field];
+			}
+		}
+
+		if (empty($allowed))
+		{
+			return FALSE;
+		}
+
+		return $this->db->where('id', (int) $item_id)
+			->where('delivery_list_id', (int) $list_id)
+			->update('delivery_items', $allowed);
+	}
+
+	/**
 	 * Geser tujuan satu langkah ke atas/bawah dengan menukar sort_order.
 	 *
 	 * @param int    $list_id

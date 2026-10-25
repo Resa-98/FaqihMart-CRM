@@ -47,13 +47,13 @@ if ( ! function_exists('delivery_status_badge_classes'))
 		switch ($status)
 		{
 			case 'published':
-				return 'bg-green-100 text-green-800';
+				return 'fm-badge fm-badge-primary';
 			case 'completed':
-				return 'bg-gray-200 text-gray-700';
+				return 'fm-badge fm-badge-gray';
 			case 'cancelled':
-				return 'bg-red-100 text-red-700';
+				return 'fm-badge fm-badge-red';
 			default: // draft
-				return 'bg-amber-100 text-amber-800';
+				return 'fm-badge fm-badge-amber';
 		}
 	}
 }
@@ -86,11 +86,116 @@ if ( ! function_exists('delivery_item_status_badge_classes'))
 		switch ($status)
 		{
 			case 'done':
-				return 'bg-green-100 text-green-800';
+				return 'fm-badge fm-badge-primary';
 			case 'in_progress':
-				return 'bg-blue-100 text-blue-800';
+				return 'fm-badge fm-badge-blue';
 			default: // pending
-				return 'bg-gray-100 text-gray-600';
+				return 'fm-badge fm-badge-gray';
 		}
+	}
+}
+
+if ( ! function_exists('delivery_receipts_dir'))
+{
+	/**
+	 * Direktori penyimpanan foto struk (di luar akses langsung via .htaccess).
+	 *
+	 * @return string Path absolut dengan trailing separator.
+	 */
+	function delivery_receipts_dir()
+	{
+		return rtrim(FCPATH, '/\\').DIRECTORY_SEPARATOR.'uploads'
+			.DIRECTORY_SEPARATOR.'receipts'.DIRECTORY_SEPARATOR;
+	}
+}
+
+if ( ! function_exists('delivery_receipt_path'))
+{
+	/**
+	 * Path absolut file struk. Hanya menerima nama file yang aman dan
+	 * ekstensi gambar yang diizinkan.
+	 *
+	 * @param string|null $filename
+	 * @return string|null
+	 */
+	function delivery_receipt_path($filename)
+	{
+		$filename = str_replace('\\', '/', (string) $filename);
+		$filename = basename($filename);
+
+		if ($filename === '' || $filename === '.' || $filename === '..' || strpos($filename, "\0") !== FALSE)
+		{
+			return NULL;
+		}
+
+		if (delivery_receipt_mime($filename) === NULL)
+		{
+			return NULL;
+		}
+
+		return delivery_receipts_dir().$filename;
+	}
+}
+
+if ( ! function_exists('delivery_receipt_mime'))
+{
+	/**
+	 * MIME type yang diizinkan berdasarkan ekstensi file.
+	 *
+	 * @param string|null $filename
+	 * @return string|null
+	 */
+	function delivery_receipt_mime($filename)
+	{
+		$ext = strtolower(pathinfo((string) $filename, PATHINFO_EXTENSION));
+		$map = array(
+			'jpg'  => 'image/jpeg',
+			'jpeg' => 'image/jpeg',
+			'png'  => 'image/png',
+		);
+
+		return isset($map[$ext]) ? $map[$ext] : NULL;
+	}
+}
+
+if ( ! function_exists('delivery_receipt_exists'))
+{
+	/**
+	 * @param string|null $filename
+	 * @return bool
+	 */
+	function delivery_receipt_exists($filename)
+	{
+		$path = delivery_receipt_path($filename);
+		return ($path !== NULL && is_file($path));
+	}
+}
+
+if ( ! function_exists('delivery_receipt_file'))
+{
+	/**
+	 * Informasi file struk yang siap disajikan, atau NULL bila tidak valid.
+	 *
+	 * @param string|null $filename
+	 * @return array|null
+	 */
+	function delivery_receipt_file($filename)
+	{
+		$path = delivery_receipt_path($filename);
+		$mime = delivery_receipt_mime($filename);
+
+		if ($path === NULL || $mime === NULL || ! is_file($path))
+		{
+			return NULL;
+		}
+
+		$ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+		return array(
+			'path'          => $path,
+			'mime'          => $mime,
+			'size'          => (int) filesize($path),
+			'download_name' => 'struk-'.date('Ymd-His').'.'.$ext,
+		);
 	}
 }

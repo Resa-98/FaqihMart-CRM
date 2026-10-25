@@ -1,5 +1,13 @@
 RewriteEngine On
 
+# Disable directory listing
+Options -Indexes
+
+# Block direct access to version control directories
+RewriteRule ^\.git(?:/|$) - [F,L]
+RewriteRule ^\.svn(?:/|$) - [F,L]
+RewriteRule ^\.hg(?:/|$) - [F,L]
+
 # Block direct access to all dotfiles (.env, .gitignore, .htaccess, ...)
 <FilesMatch "^\.">
 	Require all denied
@@ -31,6 +39,15 @@ RewriteEngine On
 # RewriteCond %{HTTPS} off
 # RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:[0-9]+)?$ [NC]
 # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Basic security headers
+<IfModule mod_headers.c>
+	Header always set X-Content-Type-Options "nosniff"
+	Header always set X-Frame-Options "DENY"
+	Header always set Referrer-Policy "strict-origin-when-cross-origin"
+	Header always set X-Robots-Tag "noindex, nofollow"
+	Header always set Permissions-Policy "geolocation=(), camera=(), microphone=()"
+</IfModule>
 
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

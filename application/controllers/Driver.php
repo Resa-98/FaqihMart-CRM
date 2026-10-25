@@ -36,6 +36,23 @@ class Driver extends CI_Controller
 		));
 	}
 
+	public function receipt($token = '', $item_id = 0)
+	{
+		$list = $this->delivery_model->find_by_token($token);
+		if ( ! $list)
+		{
+			show_404();
+		}
+
+		$item = $this->delivery_model->get_item($list['id'], $item_id);
+		if ( ! $item || empty($item['receipt_file']))
+		{
+			show_404();
+		}
+
+		$this->_send_receipt($item['receipt_file']);
+	}
+
 	public function updateItemStatus($token = '', $item_id = 0)
 	{
 		if ($this->input->method() !== 'post')
@@ -70,6 +87,30 @@ class Driver extends CI_Controller
 
 		$this->delivery_model->update_item_status($item['id'], $status);
 		redirect('d/'.$token);
+	}
+
+	private function _send_receipt($filename)
+	{
+		$file = delivery_receipt_file($filename);
+		if ($file === NULL)
+		{
+			show_404();
+		}
+
+		$content = @file_get_contents($file['path']);
+		if ($content === FALSE)
+		{
+			show_404();
+		}
+
+		$this->output
+			->set_header('Content-Type: '.$file['mime'])
+			->set_header('Content-Disposition: inline; filename="'.$file['download_name'].'"')
+			->set_header('Content-Length: '.$file['size'])
+			->set_header('X-Content-Type-Options: nosniff')
+			->set_header('Cache-Control: private, max-age=0, must-revalidate')
+			->set_header('X-Robots-Tag: noindex, nofollow')
+			->set_output($content);
 	}
 
 	/**
